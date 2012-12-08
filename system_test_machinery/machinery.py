@@ -5,7 +5,6 @@ system test machinery
 import functools
 import os
 import pytest
-import collections
 import itertools
 import filecmp
 
@@ -50,11 +49,13 @@ def vmap(f, d):
 def evaluate_expr(bindings, root_expr):
     """evaluate TEST_CASE wrt given bindings, returning a CONCRETE_TEST_CASE"""
 
-    def eval_test_case(_, kwargs):
+    def eval_test_case(_, test_case):
         """evaluate args of test case and return concrete test case"""
-        test_case = dict(kwargs)
-        arguments = dict(test_case.get('arguments', {}))
-        test_case['arguments'] = vmap(_eval, arguments)
+        test_case = dict(test_case)
+        args = tuple(test_case.get('args', ()))
+        kwargs = dict(test_case.get('kwargs', {}))
+        test_case['args'] = map(_eval, args)
+        test_case['kwargs'] = vmap(_eval, kwargs)
 
         test_resources = {
             'in_dir' : bindings['in_dir'],
@@ -82,7 +83,13 @@ def evaluate_expr(bindings, root_expr):
             tag, args, kwargs = x
             return handler[tag](args, kwargs)
         else:
-            return x
+            if isinstance(x, tuple):
+                return tuple(_eval(y) for y in x)
+            elif isinstance(x, list):
+                # nb intentionally freeze lists as tuples
+                return tuple(_eval(y) for y in x)
+            else:
+                return x
 
     return _eval(root_expr)
 
@@ -100,6 +107,10 @@ def default_resolve_dir(root, name, kind):
     """
     return os.path.join(str(root), name, kind)
 
+def is_ignored_file(name):
+    """ignore this file, even if it is in expected dir?"""
+    return name.startswith('.') or name.endswith('~')
+
 def gen_files_inside(root_path):
     """yields relative paths to all files inside root_path"""
     def handle_error(error):
@@ -107,23 +118,41 @@ def gen_files_inside(root_path):
         raise error
     for (dirpath, _, file_names) in os.walk(root_path, onerror=handle_error):
         for name in file_names:
+            if is_ignored_file(name):
+                continue
             yield os.path.relpath(os.path.join(dirpath, name), root_path)
 
-#pylint cannot figure out this is a type name
-#pylint: disable=C0103
-FileList = collections.namedtuple('FileList', ['test_name', 'test_purpose',
-    'test_arguments', 'dir', 'files'])
+class FileList(object):
+    def __init__(self, test_name, test_purpose, test_args, test_kwargs, dir, files):
+        super(FileList, self).__init__()
+        self.test_name = test_name
+        self.test_purpose = test_purpose
+        self.test_args = test_args
+        self.test_kwargs = test_kwargs
+        self.dir = dir
+        self.files = files
+
+    def __eq__(self, right):
+        if len(self.files) != len(right.files):
+            return False
+        else:
+            return all(a == b for (a, b) in itertools.izip(self.files, right.files))
 
 def file_list_diff_repr(left, right):
     """custom assert FileList == FileList hook for py.test"""
     lines = [
-        '<output files> == <expected files>',
+        '<FileList of output files> == <FileList of expected files>',
         ('system test: %s' % left.test_name),
         ('purpose: %s' % left.test_purpose),
-        'arguments:',
     ]
-    for (k, v) in sorted(left.test_arguments.items()):
-        lines += ['\t%s = %s' % (str(k), str(v))]
+    if left.test_args:
+        lines += ['test args:']
+        for arg in left.test_args:
+            lines += ['\t%s' % str(arg)]
+    if left.test_kwargs:
+        lines += ['test kwargs:']
+        for (k, v) in sorted(left.test_kwargs.items()):
+            lines += ['\t%s = %s' % (str(k), str(v))]
 
     lines += [
         ('output dir:  "%s"' % left.dir),
@@ -135,7 +164,7 @@ def file_list_diff_repr(left, right):
                 left_status[1]))
     return lines
 
-def get_output_and_expected(name, purpose, test_args, out_dir, expected_dir):
+def get_output_and_expected(name, purpose, test_args, test_kwargs, out_dir, expected_dir):
     """compares files, returning output and expected FileList objects"""
     left = []
     right = []
@@ -144,7 +173,7 @@ def get_output_and_expected(name, purpose, test_args, out_dir, expected_dir):
         expected = os.path.join(expected_dir, rel_file)
         assert os.path.exists(expected)
         if os.path.exists(out):
-            if filecmp.cmp(left, right, True):
+            if filecmp.cmp(out, expected, True):
                 left.append(('matches', rel_file))
                 right.append(('matches', rel_file))
             else:
@@ -154,8 +183,8 @@ def get_output_and_expected(name, purpose, test_args, out_dir, expected_dir):
             left.append(('missing', rel_file))
             right.append(('exists', rel_file))
 
-    left_files = FileList(name, purpose, test_args, out_dir, left)
-    right_files = FileList(name, purpose, test_args, expected_dir, right)
+    left_files = FileList(name, purpose, test_args, test_kwargs, out_dir, left)
+    right_files = FileList(name, purpose, test_args, test_kwargs, expected_dir, right)
     return left_files, right_files
 
 
@@ -164,22 +193,25 @@ def compare_test_output(concrete_test_case):
     _, (resources, test_case), _ = concrete_test_case
     resources = dict(resources)
     test_case = dict(test_case)
-    arguments = dict(test_case.get('arguments', ()))
+    args = tuple(test_case.get('args', ()))
+    kwargs = dict(test_case.get('kwargs', ()))
 
     return get_output_and_expected(
         test_case['name'],
         test_case['purpose'],
-        arguments,
+        args,
+        kwargs,
         resources['out_dir'],
         resources['expected_dir'])
 
 
 def extract_arguments(concrete_test_case):
     """extract system test arguments from a concrete test case"""
-    _, (resources, test_case), _ = concrete_test_case
-    resources = dict(resources)
+    _, (_, test_case), _ = concrete_test_case
     test_case = dict(test_case)
-    return dict(test_case.get('arguments', ()))
+    args = tuple(test_case.get('args', ()))
+    kwargs = dict(test_case.get('kwargs', ()))
+    return args, kwargs
 
 
 def make_concrete_test(test_case, test_data_dir, tmpdir, resolve_dir):
@@ -242,7 +274,8 @@ def make_system_test(test_cases, run_system_test, resolve_dir=None):
             concrete_test_case = make_concrete_test(test_case, test_data_dir,
                 tmpdir, resolve_dir)
 
-            run_system_test(extract_arguments(concrete_test_case))
+            args, kwargs = extract_arguments(concrete_test_case)
+            run_system_test(*args, **kwargs)
 
             output, expected = compare_test_output(concrete_test_case)
             system_test(output, expected)
