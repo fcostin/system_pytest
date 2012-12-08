@@ -1,4 +1,6 @@
-system_tests:
-	py.test --cov footils --cov-report term-missing --test-data-dir footils_test_data footils_tests/
+PYTHONPATH := ..
 
-.PHONY: system_tests
+run_example:
+	cd example && $(MAKE)
+
+.IGNORE: run_example
