@@ -23,6 +23,6 @@ def resolve_dir_ehco(root, kind, test_name):
 
 @make_system_test(EHCO_TESTS, footils.ehco.main, resolve_dir_ehco)
 def test_footils_rot13(output, expected):
-    """run all footils.rot13 system tests"""
+    """run all ehco system tests"""
     assert output == expected
 
