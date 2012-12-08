@@ -94,22 +94,24 @@ def evaluate_expr(bindings, root_expr):
     return _eval(root_expr)
 
 
-def default_resolve_dir(root, name, kind):
+def default_resolve_dir(root, kind, name):
     """
     resolves abstract test data paths to concrete paths on filesystem
     
     arguments:
         root : the root path
-        name : the name of the test
         kind : either 'input' or 'output_expected'
+        name : the name of the test
     return value:
         path to requested test resource (string)
     """
-    return os.path.join(str(root), name, kind)
+    return os.path.join(str(root), kind, name)
+
 
 def is_ignored_file(name):
     """ignore this file, even if it is in expected dir?"""
     return name.startswith('.') or name.endswith('~')
+
 
 def gen_files_inside(root_path):
     """yields relative paths to all files inside root_path"""
@@ -138,6 +140,7 @@ class FileList(object):
         else:
             return all(a == b for (a, b) in itertools.izip(self.files, right.files))
 
+
 def file_list_diff_repr(left, right):
     """custom assert FileList == FileList hook for py.test"""
     lines = [
@@ -164,6 +167,7 @@ def file_list_diff_repr(left, right):
                 left_status[1]))
     return lines
 
+
 def get_output_and_expected(name, purpose, test_args, test_kwargs, out_dir, expected_dir):
     """compares files, returning output and expected FileList objects"""
     left = []
@@ -183,6 +187,8 @@ def get_output_and_expected(name, purpose, test_args, test_kwargs, out_dir, expe
             left.append(('missing', rel_file))
             right.append(('exists', rel_file))
 
+    if not right:
+        raise RuntimeError('found no files in expected_dir: %s' % expected_dir)
     left_files = FileList(name, purpose, test_args, test_kwargs, out_dir, left)
     right_files = FileList(name, purpose, test_args, test_kwargs, expected_dir, right)
     return left_files, right_files
