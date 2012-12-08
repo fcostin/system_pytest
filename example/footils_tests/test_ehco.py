@@ -12,7 +12,7 @@ EHCO_TESTS = [
         purpose="test that ehco is able to copy a one-line quote without error",
         kwargs={
             'in_file' : IN_DIR('quote.txt'),
-            'out_file' : IN_DIR('quote.txt'),
+            'out_file' : OUT_DIR('quote.txt'),
         }
     ),
 ]
@@ -22,7 +22,7 @@ def resolve_dir_ehco(root, kind, test_name):
     return os.path.join(root, 'ehco_tests', kind, test_name)
 
 @make_system_test(EHCO_TESTS, footils.ehco.main, resolve_dir_ehco)
-def test_footils_rot13(output, expected):
+def test_footils_ehco(output, expected):
     """run all ehco system tests"""
     assert output == expected
 
