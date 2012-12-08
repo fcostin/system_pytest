@@ -1,5 +1,9 @@
-import pytest
+"""
+example system tests for the foo package
+"""
+
 from system_test_machinery import TEST_CASE, IN_DIR, OUT_DIR, make_system_test
+import foo.foo
 
 FOO_TESTS = [
     TEST_CASE(
@@ -23,9 +27,9 @@ FOO_TESTS = [
     ),
 ]
 
-import foo.foo
 
 @make_system_test(FOO_TESTS, foo.foo.main)
 def test_foo(output, expected):
+    """perform glorious system tests upon the foo package"""
     assert output == expected
 

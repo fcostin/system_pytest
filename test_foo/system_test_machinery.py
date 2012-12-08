@@ -9,9 +9,12 @@ import collections
 import itertools
 import filecmp
 
+
 def deep_freeze(x):
+    """return frozen deep copy of x"""
     if isinstance(x, dict):
-        return tuple((deep_freeze(k), deep_freeze(v)) for (k, v) in x.iteritems())
+        return tuple((deep_freeze(k), deep_freeze(v)) for (k, v) in
+            x.iteritems())
     elif isinstance(x, list):
         return tuple(deep_freeze(v) for v in x)
     elif isinstance(x, set):
@@ -19,26 +22,36 @@ def deep_freeze(x):
     else:
         return x
 
-def EXPR(_expr_tag, *args, **kwargs):
-    # we wanna be able to use EXPRs as parameters to pytest test cases
-    # for some pytest internal reason this means we need to be able to hash them
-    # so, we turn all collections into frozen representations
-    return (_expr_tag, deep_freeze(args), deep_freeze(kwargs))
 
-TEST_CASE = functools.partial(EXPR, 'test_case')
-IN_DIR = functools.partial(EXPR, 'in_dir')
-OUT_DIR = functools.partial(EXPR, 'out_dir')
-CONCRETE_TEST_CASE = functools.partial(EXPR, 'concrete_test_case')
+def make_expr(tag, *args, **kwargs):
+    """build expression of form (tag, args, kwargs)"""
+    # We want to be able to use EXPRs as parameters to pytest test cases.
+    # For some pytest internal reason this means we need to be able to hash
+    # them. So, we turn all collections into frozen representations.
+    return (tag, deep_freeze(args), deep_freeze(kwargs))
+
+
+TEST_CASE = functools.partial(make_expr, 'test_case')
+IN_DIR = functools.partial(make_expr, 'in_dir')
+OUT_DIR = functools.partial(make_expr, 'out_dir')
+CONCRETE_TEST_CASE = functools.partial(make_expr, 'concrete_test_case')
+
 
 def is_handled_expr(known_tags, x):
+    """is this an expression we know how to handle?"""
     return isinstance(x, tuple) and len(x) == 3 and x[0] in known_tags
 
+
 def vmap(f, d):
+    """maps over dict values, returning dict"""
     return {k:f(v) for k, v in d.iteritems()}
 
-def eval_in_context(bindings, root_expr):
 
-    def eval_test_case(args, kwargs):
+def evaluate_expr(bindings, root_expr):
+    """evaluate TEST_CASE wrt given bindings, returning a CONCRETE_TEST_CASE"""
+
+    def eval_test_case(_, kwargs):
+        """evaluate args of test case and return concrete test case"""
         test_case = dict(kwargs)
         arguments = dict(test_case.get('arguments', {}))
         test_case['arguments'] = vmap(_eval, arguments)
@@ -51,6 +64,7 @@ def eval_in_context(bindings, root_expr):
         return CONCRETE_TEST_CASE(test_resources, test_case)
 
     def expand_dir(dir_name, args, kwargs):
+        """expand args as sub-path of bound path for dir_name"""
         return os.path.join(bindings[dir_name], *args)
 
     eval_in_dir = functools.partial(expand_dir, 'in_dir')
@@ -63,6 +77,7 @@ def eval_in_context(bindings, root_expr):
     }
 
     def _eval(x):
+        """evaluate expression or literal"""
         if is_handled_expr(handler, x):
             tag, args, kwargs = x
             return handler[tag](args, kwargs)
@@ -73,15 +88,29 @@ def eval_in_context(bindings, root_expr):
 
 
 def default_resolve_dir(root, name, kind):
+    """
+    resolves abstract test data paths to concrete paths on filesystem
+    
+    arguments:
+        root : the root path
+        name : the name of the test
+        kind : either 'input' or 'output_expected'
+    return value:
+        path to requested test resource (string)
+    """
     return os.path.join(str(root), name, kind)
 
 def gen_files_inside(root_path):
+    """yields relative paths to all files inside root_path"""
     def handle_error(error):
+        """raises any filesystem errors when walking over expected files"""
         raise error
     for (dirpath, _, file_names) in os.walk(root_path, onerror=handle_error):
         for name in file_names:
             yield os.path.relpath(os.path.join(dirpath, name), root_path)
 
+#pylint cannot figure out this is a type name
+#pylint: disable=C0103
 FileList = collections.namedtuple('FileList', ['test_name', 'test_purpose',
     'test_arguments', 'dir', 'files'])
 
@@ -102,10 +131,12 @@ def file_list_diff_repr(left, right):
     ]
     for left_status, right_status in itertools.izip(left.files, right.files):
         if left_status != right_status:
-            lines.append('FILE %s: "%s"' % (left_status[0].upper(), left_status[1]))
+            lines.append('FILE %s: "%s"' % (left_status[0].upper(),
+                left_status[1]))
     return lines
 
 def get_output_and_expected(name, purpose, test_args, out_dir, expected_dir):
+    """compares files, returning output and expected FileList objects"""
     left = []
     right = []
     for rel_file in gen_files_inside(expected_dir):
@@ -127,7 +158,9 @@ def get_output_and_expected(name, purpose, test_args, out_dir, expected_dir):
     right_files = FileList(name, purpose, test_args, expected_dir, right)
     return left_files, right_files
 
+
 def compare_test_output(concrete_test_case):
+    """compares output files against expected files"""
     _, (resources, test_case), _ = concrete_test_case
     resources = dict(resources)
     test_case = dict(test_case)
@@ -140,26 +173,30 @@ def compare_test_output(concrete_test_case):
         resources['out_dir'],
         resources['expected_dir'])
 
+
 def extract_arguments(concrete_test_case):
+    """extract system test arguments from a concrete test case"""
     _, (resources, test_case), _ = concrete_test_case
     resources = dict(resources)
     test_case = dict(test_case)
     return dict(test_case.get('arguments', ()))
 
 
-def make_concrete_test(test_data_dir, tmpdir, test_case_expr, resolve_dir):
-    # -- unfreeze/unpack test case expr
-    _, _, kwargs = test_case_expr
+def make_concrete_test(test_case, test_data_dir, tmpdir, resolve_dir):
+    """build a concrete system test from given test case expression"""
+    # unfreeze/unpack test case expr
+    _, _, kwargs = test_case
     kwargs = dict(kwargs)
     test_name = kwargs['name']
-    # -- define bindings to concrete paths obtained from pytest
+    # define bindings to concrete paths obtained from pytest
     bindings = {
         'in_dir' : resolve_dir(test_data_dir, 'input', test_name),
-        'expected_dir' : resolve_dir(test_data_dir, 'output_expected', test_name),
+        'expected_dir' : resolve_dir(test_data_dir, 'output_expected',
+            test_name),
         'out_dir' : str(tmpdir),
     }
-    # -- evaluate test case expr wrt bindings
-    return eval_in_context(bindings, test_case_expr)
+    # evaluate test case expr wrt bindings
+    return evaluate_expr(bindings, test_case)
 
 
 def make_system_test(test_cases, run_system_test, resolve_dir=None):
@@ -187,25 +224,28 @@ def make_system_test(test_cases, run_system_test, resolve_dir=None):
         assert output == expected
     """
 
+    #pytest demands tuple'd parameters when using mark.parametrize
     test_cases = [(x, ) for x in test_cases]
 
     if resolve_dir is None:
         resolve_dir = default_resolve_dir
 
     def system_test_decorator(system_test):
+        """transforms given system test py.test parametrised with test cases"""
         #pylint gets confused and complains that pytest has no mark member
         #pylint: disable=E1101
-        @pytest.mark.parametrize(('test_case_expr', ), test_cases)
+        @pytest.mark.parametrize(('test_case', ), test_cases)
         @functools.wraps(system_test)
-        def system_test_wrapper(test_data_dir, tmpdir, test_case_expr):
+        def system_test_wrapper(test_data_dir, tmpdir, test_case):
+            """boilerplate to construct and run system tests"""
 
-            concrete_test_case = make_concrete_test(test_data_dir, tmpdir,
-                test_case_expr, resolve_dir)
+            concrete_test_case = make_concrete_test(test_case, test_data_dir,
+                tmpdir, resolve_dir)
 
             run_system_test(extract_arguments(concrete_test_case))
 
-            output_files, expected_files = compare_test_output(concrete_test_case)
-            system_test(output_files, expected_files)
+            output, expected = compare_test_output(concrete_test_case)
+            system_test(output, expected)
 
         return system_test_wrapper
     return system_test_decorator
