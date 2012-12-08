@@ -1,0 +1,30 @@
+the idea:
+
+1.  in user test script we define:
+
+    A.  a big list of test cases
+            each test case defines
+                its name
+                its purpose
+                command line args with marked-up paths to in-dir and out-dir
+
+        (it is assumed that if we know the test-case dir and the test data dir
+        we can infer what absolute paths to use for in-dir and out-dir)
+
+    B.  which function to call with all the args to run a test
+            eg the main(args) function of some script
+
+2.  when we run the test framework we say:
+
+    where the test data dir is (pass on command line/some env var?)
+
+3.  during test collection phase
+
+    we generate a list of (bindings, test_case) pairs
+    each one gets resolved to a system test
+    use parametric test nonsense
+
+4.  during test execution phase
+
+    what a surprise, we execute tests
+
