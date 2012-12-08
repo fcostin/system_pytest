@@ -1,10 +1,12 @@
 """
-
+compare and pretty-print file differences in py.test failures
 """
 
 import os
 import filecmp
 import itertools
+
+from system_test_machinery import file_diff
 
 
 class FileList(object):
@@ -45,7 +47,8 @@ def get_output_and_expected(name, purpose, test_args, test_kwargs, out_dir,
                 left.append(('matches', rel_file))
                 right.append(('matches', rel_file))
             else:
-                left.append(('differs', rel_file))
+                diff = file_diff.explain_difference(out, expected)
+                left.append(('differs', rel_file, diff))
                 right.append(('expected', rel_file))
         else:
             left.append(('missing', rel_file))
@@ -85,6 +88,8 @@ def file_list_diff_repr(left, right):
         if left_status != right_status:
             lines.append('FILE %s: "%s"' % (left_status[0].upper(),
                 left_status[1]))
+            if len(left_status) == 3:
+                lines += left_status[2]
     return lines
 
 
