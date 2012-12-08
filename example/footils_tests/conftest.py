@@ -1,7 +1,7 @@
 """
 special py.test configuration required for system_test_machinery
 """
-from system_test_machinery.machinery import FileList, file_list_diff_repr
+from system_test_machinery.file_list import FileList, file_list_diff_repr
 
 def pytest_addoption(parser):
     """add command line options to pytest"""
