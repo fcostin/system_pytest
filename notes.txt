@@ -1,0 +1,19 @@
+to update the directory structure diagram, use
+
+    tree --charset ansi example
+
+it is possible to convert colourful terminal output to html, using
+
+    script
+    ansi2html (https://raw.github.com/pixelb/scripts/master/scripts/ansi2html.sh)
+
+e.g.
+
+    script
+    make
+    exit
+    cat typescript | ~/Downloads/ansi2html.sh --bg=dark > out.html
+
+but, not immediately sure how to easily weave this into the existing markdown readme.
+
+it would make for pretty examples!

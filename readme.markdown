@@ -39,6 +39,8 @@ Suppose we've written a buggy python package named `footils`. `footils` consists
 *   `ehco` is kind of like a file-based `echo`. Unfortunately, `ehco` replaces `'ch'` with `'hc'` when writing output.
 *   `rot13` is a file-based `rot13` utility which usually rot13-encodes lines of text.
     Sadly, if a line contains the substring `'13'`, the rest of the line is rotated about the `'13'`.
+*   `triple` takes two inputs: a file to read, and a directory to write to. It writes three
+    copies of the input file to the directory, with `.0`, `.1` and `.2` suffixes.
 
 To test these wonderful scripts, we shall write system tests that
 
@@ -85,36 +87,34 @@ Here is an example script defining two system tests for the `rot13` script:
 
 Provided the `system_test_machinery` package can be found by python, we can run our `footils` system tests like so:
 
-    py.test --test-data-dir footils_test_data footils_tests/
+	py.test --tb=short --test-data-dir footils_test_data footils_tests/
 
 Note that we explicitly pass the path to the test data directory via the `--test-data-dir` argument to `py.test`.
 This is a custom argument to `py.test` that we have defined using a `conftest.py` file inside the `footils_tests` package, which is read by `py.test` (more on this later).
 
 Here is an example of output from `py.test` when one of our system tests fails:
 
-    output = <system_test_machinery.machinery.FileList object at 0x1379a10>, expected = <system_test_machinery.machinery.FileList object at 0x1379890>
-
-        @make_system_test(ROT13_TESTS, footils.rot13.main, resolve_dir_rot13)
-        def test_footils_rot13(output, expected):
-            """run all footils.rot13 system tests"""
+    _______________ test_footils_rot13[footils_test_data-test_case1] _______________
+    ../system_test_machinery/machinery.py:58: in system_test_wrapper
+    >       system_test(output, expected)
+    footils_tests/test_rot13.py:29: in test_footils_rot13
     >       assert output == expected
     E       assert <FileList of output files> == <FileList of expected files>
     E         system test: test2_numbers
     E         purpose: test that rot13 leaves numbers invariant
     E         test args:
-    E           ('footils_test_data/rot13_tests/input/test2_numbers/numbers.txt', '/tmp/pytest-239/test_footils_rot13_footils_test_data_test_case1_0/numbers.txt')
-    E         output dir:  "/tmp/pytest-239/test_footils_rot13_footils_test_data_test_case1_0"
+    E         	('footils_test_data/rot13_tests/input/test2_numbers/numbers.txt', '/tmp/pytest-32/test_footils_rot13_footils_test_data_test_case1_0/numbers.txt')
+    E         output dir:  "/tmp/pytest-32/test_footils_rot13_footils_test_data_test_case1_0"
     E         expected dir:  "footils_test_data/rot13_tests/output_expected/test2_numbers"
     E         FILE DIFFERS: "numbers.txt"
-
-    footils_tests/test_rot13.py:29: AssertionError
+    E          @@ -1 +1 @@\n
+    E          - 14 15 16 17 18 19 20131 2 3 4 5 6 7 8 9 10 11 12 \n
+    E          +1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n
 
 #### example `conftest.py` configuration file
 
-    """
-    special py.test configuration required for system_test_machinery
-    """
-    from system_test_machinery.machinery import FileList, file_list_diff_repr
+
+    from system_test_machinery.file_list import FileList, file_list_diff_repr
 
     def pytest_addoption(parser):
         """add command line options to pytest"""
@@ -133,13 +133,15 @@ Here is an example of output from `py.test` when one of our system tests fails:
                 isinstance(right, FileList)):
             return file_list_diff_repr(left, right)
 
+
 #### package layout used for this example
 
     example
     |-- footils
     |   |-- ehco.py
     |   |-- __init__.py
-    |   `-- rot13.py
+    |   |-- rot13.py
+    |   `-- triple.py
     |-- footils_test_data
     |   |-- ehco_tests
     |   |   |-- input
@@ -148,22 +150,32 @@ Here is an example of output from `py.test` when one of our system tests fails:
     |   |   `-- output_expected
     |   |       `-- test1
     |   |           `-- quote.txt
-    |   `-- rot13_tests
+    |   |-- rot13_tests
+    |   |   |-- input
+    |   |   |   |-- test1_hello_world
+    |   |   |   |   `-- hello.txt
+    |   |   |   `-- test2_numbers
+    |   |   |       `-- numbers.txt
+    |   |   `-- output_expected
+    |   |       |-- test1_hello_world
+    |   |       |   `-- hello.txt
+    |   |       `-- test2_numbers
+    |   |           `-- numbers.txt
+    |   `-- triple_tests
     |       |-- input
-    |       |   |-- test1_hello_world
-    |       |   |   `-- hello.txt
-    |       |   `-- test2_numbers
-    |       |       `-- numbers.txt
+    |       |   `-- test1_hello_this_is_dog
+    |       |       `-- hello.txt
     |       `-- output_expected
-    |           |-- test1_hello_world
-    |           |   `-- hello.txt
-    |           `-- test2_numbers
-    |               `-- numbers.txt
+    |           `-- test1_hello_this_is_dog
+    |               |-- hello.txt.0
+    |               |-- hello.txt.1
+    |               `-- hello.txt.2
     |-- footils_tests
     |   |-- conftest.py
     |   |-- __init__.py
     |   |-- test_ehco.py
-    |   `-- test_rot13.py
+    |   |-- test_rot13.py
+    |   `-- test_triple.py
     `-- Makefile
 
 The `footils` package itself lives inside `footils`.
