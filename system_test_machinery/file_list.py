@@ -89,7 +89,8 @@ def file_list_diff_repr(left, right):
             lines.append('FILE %s: "%s"' % (left_status[0].upper(),
                 left_status[1]))
             if len(left_status) == 3:
-                lines += left_status[2]
+                for line in left_status[2]:
+                    lines.append(' '+line)
     return lines
 
 
